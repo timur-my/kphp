@@ -87,11 +87,10 @@ void PhpScript::error(const char *error_message, script_error_t error_type) noex
 }
 
 void PhpScript::check_tl() noexcept {
+  assert(is_running == true); // ensures that initialization is complete
   if (tl_flag) {
-    state = run_state_t::error;
-    error_type = script_error_t::timeout;
-    error_message = "Timeout exit";
-    pause();
+    script_stack.asan_stack_unpoison();
+    siglongjmp(timeout_handler, true);
   }
 }
 
@@ -317,6 +316,9 @@ run_state_t PhpScript::iterate() noexcept {
 
 void PhpScript::finish() noexcept {
   assert (state == run_state_t::finished || state == run_state_t::error);
+  if (tl_flag) {
+    resume(); // here we need to resume to run shutdown functions
+  }
   auto save_state = state;
   const auto &script_mem_stats = dl::get_script_memory_stats();
   state = run_state_t::uncleared;
