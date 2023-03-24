@@ -47,6 +47,7 @@
 #include "runtime/regexp.h"
 #include "runtime/resumable.h"
 #include "runtime/rpc.h"
+#include "runtime/runtime_injection.h"
 #include "runtime/streams.h"
 #include "runtime/string_functions.h"
 #include "runtime/tcp.h"
@@ -65,6 +66,9 @@
 #include "server/php-query-data.h"
 #include "server/php-worker.h"
 #include "server/workers-control.h"
+
+using runtime_injection::on_shutdown_functions_start;
+using runtime_injection::on_shutdown_functions_finish;
 
 static enum {
   QUERY_TYPE_NONE,
@@ -615,9 +619,7 @@ void f$fastcgi_finish_request(int64_t exit_code) {
 }
 
 void run_shutdown_functions(ShutdownType shutdown_type) {
-  if (kphp_tracing::on_shutdown_functions_start) {
-    kphp_tracing::on_shutdown_functions_start(shutdown_functions_count, static_cast<int64_t>(shutdown_type));
-  }
+  runtime_injection::invoke_callback(on_shutdown_functions_start, shutdown_functions_count, static_cast<int64_t>(shutdown_type));
 
   php_assert(dl::is_malloc_replaced() == false);
   forcibly_stop_all_running_resumables();
@@ -627,9 +629,7 @@ void run_shutdown_functions(ShutdownType shutdown_type) {
     shutdown_functions[i]();
   }
 
-  if (kphp_tracing::on_shutdown_functions_finish) {
-    kphp_tracing::on_shutdown_functions_finish();
-  }
+  runtime_injection::invoke_callback(on_shutdown_functions_finish);
 }
 
 shutdown_functions_status get_shutdown_functions_status() {
@@ -2374,6 +2374,7 @@ static void free_runtime_libs() {
   free_timelib();
   OnKphpWarningCallback::get().reset();
   kphp_tracing::free_tracing_lib();
+  runtime_injection::free_callbacks();
   free_slot_factories();
 
   free_job_client_interface_lib();
